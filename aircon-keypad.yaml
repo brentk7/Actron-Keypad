@@ -3,13 +3,7 @@ esphome:
   friendly_name: Aircon Keypad
   includes:
     - led_proto2.h
-#    - test_custom.h
-#     - actron_keypad_pulse.h
 
-#custom_component:
-#  - lambda: |-
-#      auto ledproto = new LedProto(33);  # 33 corresponds to pin G33
-#      return {ledproto};
 esp32:
   board: m5stack-core-esp32
   framework:
@@ -41,26 +35,6 @@ captive_portal:
 web_server:
   port: 80
 
-#Enable sensor to read POWER-C voltage for LEDs 
-#https://esphome.io/components/sensor/adc.html?highlight=gpio+sensor
-#sensor:
-#  - platform: adc
-#    pin: GPIO33
-#    name: "Aircon Wall Panel - POWER-D"
-#    update_interval: 50ms
-#    accuracy_decimals: 3
-#    filters:   
-#    - multiply: 4.9166
-
-##Dummy test sensor
-#  - platform: custom
-#    lambda: |-
-#      auto my_sensor = new TestCustomSensor();
-#      App.register_component(my_sensor);
-#      return {my_sensor};
-#    sensors:
-#      name: "Test Custom Sensor"
-  
 
 
 #Setup i2c bus to controll MCP4725
@@ -98,6 +72,7 @@ number:
 button:
   - platform: template
     name: "Power"
+    icon: mdi:power
     on_press:
       - logger.log: Power Button Pressed
       - lambda: |-
@@ -108,6 +83,7 @@ button:
 
   - platform: template
     name: "Fan"
+    icon: mdi:fan
     on_press:
       - logger.log: Fan Button Pressed
       - lambda: |-
@@ -118,6 +94,7 @@ button:
 
   - platform: template
     name: "Temp Up"
+    icon: mdi:thermometer-plus
     on_press:
       - logger.log: Temp Up Button Pressed
       - lambda: |-
@@ -128,6 +105,7 @@ button:
 
   - platform: template
     name: "Temp Down"
+    icon: mdi:thermometer-minus
     on_press:
       - logger.log: Temp Down Button Pressed
       - lambda: |-
@@ -139,6 +117,7 @@ button:
 
   - platform: template
     name: "Mode"
+    icon: mdi:air-conditioner
     on_press:
       - logger.log: Mode Button Pressed
       - lambda: |-
@@ -149,6 +128,7 @@ button:
 
   - platform: template
     name: "Timer"
+    icon: mdi:timer
     on_press:
       - logger.log: Timer Button Pressed
       - lambda: |-
@@ -159,6 +139,7 @@ button:
 
   - platform: template
     name: "Timer Up"
+    icon: mdi:timer-plus
     on_press:
       - logger.log: Timer Up Button Pressed
       - lambda: |-
@@ -169,6 +150,7 @@ button:
 
   - platform: template
     name: "Timer Down"
+    icon: mdi:timer-minus
     on_press:
       - logger.log: Timer Down Button Pressed
       - lambda: |-
@@ -178,56 +160,103 @@ button:
           id(dac_output).set_level((0.0 / 5000.0));
 
 
+#Template sensors will be populated from lambda custom component
 sensor:
-- platform: custom
-  lambda: |-
-    auto keypad_status = new KeypadStatus();
-    App.register_component(keypad_status);
-    return {keypad_status->displayValue, keypad_status->bitcount};
-  sensors:
-  - name: "Display Value"
-    unit_of_measurement: ""  # Add any unit of measurement if needed
-    accuracy_decimals: 1     # Adjust as needed
-  - name: "Bit Count"
+  - platform: template
+    name: "Setpoint Temperature"
+    unit_of_measurement: "°C" 
+    accuracy_decimals: 1     
+    id: setpoint_temp
+    state_class: measurement
+    icon: mdi:thermometer
   
+  - platform: template
+    name: "Bit Count"
+    id: bit_count
+    state_class: measurement
+    accuracy_decimals: 0
+    
 text_sensor:
-- platform: custom
-  lambda: |-
-    auto keypad_status = new KeypadStatus();
-    App.register_component(keypad_status);
-    return {keypad_status->bitString};
-  text_sensors:
-  - name: "Bit String"
-
+  - platform: template
+    name: "Bit String"
+    id: bit_string
 
 binary_sensor:
-- platform: custom
-  lambda: |-
-    auto keypad_status = new KeypadStatus();
-    App.register_component(keypad_status);
-    return {keypad_status->cool, keypad_status->run_blink, keypad_status->unk1, keypad_status->run, 
-            keypad_status->room, keypad_status->unk2, keypad_status->unk3, keypad_status->unk4, 
-            keypad_status->cool_auto, keypad_status->fan_hi, keypad_status->fan_mid, keypad_status->fan_low, 
-            keypad_status->room3, keypad_status->room4, keypad_status->room2, keypad_status->heat, 
-            keypad_status->room1, keypad_status->unk5, keypad_status->unk5 };
+  - platform: template
+    name: "Cool"
+    icon: mdi:snowflake
+    id: cool
+  - platform: template
+    name: "Auto"
+    icon: mdi:flash-auto
+    id: auto_md
+  - platform: template
+    name: "unk1"
+    id: unk1
+  - platform: template
+    name: "Run"
+    icon: mdi:run
+    id: run
+  - platform: template
+    name: "Room"
+    id: room
+  - platform: template
+    name: "unk2"
+    id: unk2
+  - platform: template
+    name: "unk3"
+    id: unk3
+  - platform: template
+    name: "unk4"
+    id: unk4
+  - platform: template
+    name: "Fan Continuos"
+    icon: mdi:fan-chevron-up
+    id: fan_cont
+  - platform: template
+    name: "Fan Hi"
+    icon: mdi:fan-speed-3
+    id: fan_hi
+  - platform: template
+    name: "Fan Mid"
+    icon: mdi:fan-speed-2
+    id: fan_mid
+  - platform: template
+    name: "Fan Low"
+    icon: mdi:fan-speed-1
+    id: fan_low
+  - platform: template
+    name: "Room3"
+    id: room3
+  - platform: template
+    name: "Room4"
+    id: room4
+  - platform: template
+    name: "Room2"
+    id: room2
+  - platform: template
+    name: "Heat"
+    icon: mdi:fire
+    id: heat
+  - platform: template
+    name: "Room1"
+    id: room1
+  - platform: template
+    name: "unk5"
+    id: unk5
 
-  binary_sensors:
-  - name: "Cool"
-  - name: "Run Blink"
-  - name: "unk1"
-  - name: "Run"
-  - name: "Room"
-  - name: "unk2"
-  - name: "unk3"
-  - name: "unk4"
-  - name: "Cool Auto"
-  - name: "Fan Hi"
-  - name: "Fan Mid"
-  - name: "Fan Low"
-  - name: "Room3"
-  - name: "Room4"
-  - name: "Room2"
-  - name: "Heat"
-  - name: "Room1"
-  - name: "unk5"
-  
+#Populate all template sensors from lambda custom component
+#First argument of KeypadStatus is the pin number of the ADC input
+custom_component:
+  - lambda: |-
+      auto keypad_status = new KeypadStatus(33,
+                                            id(bit_string), id(setpoint_temp), id(bit_count),  
+                                            id(cool), id(auto_md), id(unk1), id(run), 
+                                            id(room), id(unk2), id(unk3), id(unk4), 
+                                            id(fan_cont), id(fan_hi), id(fan_mid), id(fan_low), 
+                                            id(room3), id(room4), id(room2), id(heat), 
+                                            id(room1), id(unk5)
+                                            );
+      return {keypad_status};
+    components:
+      id: keypad_status

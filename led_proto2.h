@@ -7,14 +7,14 @@ class clsLedProto {
   enum ClassStatLeds {
     // Enumerations representing the indices in the pulse train for various status LEDs on the HVAC unit
     COOL = 0,
-    RUN_BLINK = 1,
+    AUTO = 1,  //RUN_BLINK
     UNK1 = 2,
     RUN = 3,
     ROOM = 4,
     UNK2 = 5,
     UNK3 = 6,
     UNK4 = 7,
-    COOL_AUTO = 8,  //FAN CONT
+    FAN_CONT = 8,  // COOL_AUTO
     FAN_HI = 9,
     FAN_MID = 10,
     FAN_LOW = 11,
@@ -54,7 +54,9 @@ class clsLedProto {
   char pulse_vec[NPULSE];      // Temporary storage for the pulse train read during the interrupt
   volatile unsigned char nlow; // Counter for the number of low pulses read
   volatile unsigned char nbits; // Counter for the number of bits read to be published to Home Assistant (volatile means can be changed externally)
+  volatile unsigned char dbg_nerr; // Counter for the number of errors (volatile means can be changed externally)
   volatile bool do_work;       // Flag indicating whether there's work to be done in the main loop
+  bool data_error;             // Flag indicating whether there's been a data error
   bool newdata;                // Flag indicating whether there's new data to be processed
   char p[NPULSE];              // Storage for the most recent stable pulse train read from the unit  
 
@@ -64,15 +66,21 @@ class clsLedProto {
     unsigned long dtu = nowu - last_intr_us;  // Calculates the time difference in microseconds since the last interrupt.
     last_intr_us = nowu;           // Updates the last interrupt timestamp to the current timestamp.
     if (dtu > 3500) {
-    // Do nothing, as this is assumed to be the start of the start bit
-    return;
+      // Do nothing, as this is assumed to be the start of the start bit
+      data_error = false;  // Reset the data error flag
+      return;
     }
     if (dtu >= 2700) {
     // Start bit detected, reset bit_count
       nlow = 0;
     } else {
     // Data bit detected
-    if (nlow >= NPULSE) nlow = NPULSE;  // Ensures that nlow does not exceed NPULSE, resetting it to NPULSE if it does.
+    if (nlow >= NPULSE) {
+      //ESP_LOGD("custom","Too many pulses: %d", nlow);  //Adding this makes unstable - guess shoudln't log in ISR (maybe increment counter rather)
+      data_error = true;  // Set the data error flag
+      ++dbg_nerr;  // Increment the error counter
+      nlow = NPULSE;  // Ensures that nlow does not exceed NPULSE, resetting it to NPULSE if it does.
+    }  
     pulse_vec[nlow] = dtu < 1000;      // Records a '1' or '0' in the pulse vector based on the time difference being less than 800 microseconds.
     ++nlow;       // Increments the nlow counter, indicating a new pulse has been recorded.
     do_work = 1;  // Sets the do_work flag to true, indicating that there's work to be done in the main loop.
@@ -127,7 +135,7 @@ float get_display_value() {
       if (dt > 40000 && nlow) {  // If more than 40000 microseconds have passed and there are pulses recorded
         nbits = nlow;            // Set the number of bits to the number of pulses recorded
         nlow = 0;                // Reset the pulse counter (BCK added this line)
-        if (nbits =  40) {  // If exactly 40 pulses have been recorded (BCK changed from 42. Sometimes we get 41 bits and this has invalid data)
+        if (nbits ==  40 && !data_error ) {  // If exactly 40 pulses have been recorded (BCK changed from 42. Sometimes we get 41 bits and this has invalid data)
           if(memcmp(p, pulse_vec, sizeof p) != 0) {  // If the pulse data has changed
             newdata = true;           // Set the newdata flag for the publish_state() call
             //for (int n = 0; n < 45; ++n){       // Loop through each element of the pulse vector
@@ -136,7 +144,7 @@ float get_display_value() {
             memcpy(p, pulse_vec, sizeof p);  // Copy the new pulse data           
           }
         } else {
-          ESP_LOGD("custom","Only %d bits received", nbits);  // Log the number of bits received
+          ESP_LOGD("custom","Only %d bits received (Or data error)", nbits);  // Log the number of bits received
         }
         last_work = now;  // Update the last work time to now
       }
@@ -151,35 +159,87 @@ void handleInterrupt() {
     ledProto.handleIntr();  
 }
 
-class KeypadStatus : public Component, public TextSensor, public BinarySensor  {
-public:
-  float get_setup_priority() const override { return esphome::setup_priority::IO; }
-  TextSensor *bitString   = new TextSensor();
-  Sensor *displayValue    = new Sensor();
-  Sensor *bitcount        = new Sensor();
-  BinarySensor *cool      = new BinarySensor();
-  BinarySensor *run_blink = new BinarySensor();
-  BinarySensor *unk1      = new BinarySensor();
-  BinarySensor *run       = new BinarySensor();
-  BinarySensor *room      = new BinarySensor();
-  BinarySensor *unk2      = new BinarySensor();
-  BinarySensor *unk3      = new BinarySensor();
-  BinarySensor *unk4      = new BinarySensor();
-  BinarySensor *cool_auto = new BinarySensor();
-  BinarySensor *fan_hi    = new BinarySensor();
-  BinarySensor *fan_mid   = new BinarySensor();
-  BinarySensor *fan_low   = new BinarySensor();
-  BinarySensor *room3     = new BinarySensor();
-  BinarySensor *room4     = new BinarySensor();
-  BinarySensor *room2     = new BinarySensor();
-  BinarySensor *heat      = new BinarySensor();
-  BinarySensor *room1     = new BinarySensor();
-  BinarySensor *unk5      = new BinarySensor();
+class KeypadStatus : public Component{
+private:
+  TextSensor *bitString   ;
+  Sensor *setpoint_temp    ;
+  Sensor *bitcount        ;
+  BinarySensor *cool      ;
+  BinarySensor *auto_md      ;
+  BinarySensor *unk1      ;
+  BinarySensor *run       ;
+  BinarySensor *room      ;
+  BinarySensor *unk2      ;
+  BinarySensor *unk3      ;
+  BinarySensor *unk4      ;
+  BinarySensor *fan_cont  ;
+  BinarySensor *fan_hi    ;
+  BinarySensor *fan_mid   ;
+  BinarySensor *fan_low   ;
+  BinarySensor *room3     ;
+  BinarySensor *room4     ;
+  BinarySensor *room2     ;
+  BinarySensor *heat      ;
+  BinarySensor *room1     ;
+  BinarySensor *unk5      ;
 
-    void setup() override {
-        // Setup code to configure the pin and attach the interrupt
-        pinMode(33, INPUT);
-        attachInterrupt(digitalPinToInterrupt(33), handleInterrupt, FALLING);
+public:
+  int adc_pin;
+  float get_setup_priority() const override { return esphome::setup_priority::IO; }
+  KeypadStatus(int adc_pin             ,  //Pin for ADC connection
+               TextSensor *bitString   ,
+               Sensor *setpoint_temp    ,
+               Sensor *bitcount        ,
+               BinarySensor *cool      ,
+               BinarySensor *auto_md ,
+               BinarySensor *unk1      ,
+               BinarySensor *run       ,
+               BinarySensor *room      ,
+               BinarySensor *unk2      ,
+               BinarySensor *unk3      ,
+               BinarySensor *unk4      ,
+               BinarySensor *fan_cont ,
+               BinarySensor *fan_hi    ,
+               BinarySensor *fan_mid   ,
+               BinarySensor *fan_low   ,
+               BinarySensor *room3     ,
+               BinarySensor *room4     ,
+               BinarySensor *room2     ,
+               BinarySensor *heat      ,
+               BinarySensor *room1     ,
+               BinarySensor *unk5      )  : adc_pin(adc_pin)
+  {
+    this->bitString    = bitString   ;
+    this->setpoint_temp = setpoint_temp;
+    this->bitcount     = bitcount    ;
+    this->cool         = cool        ;
+    this->auto_md    = auto_md   ;
+    this->unk1         = unk1        ;
+    this->run          = run         ;
+    this->room         = room        ;
+    this->unk2         = unk2        ;
+    this->unk3         = unk3        ;
+    this->unk4         = unk4        ;
+    this->fan_cont    = fan_cont   ;
+    this->fan_hi       = fan_hi      ;
+    this->fan_mid      = fan_mid     ;
+    this->fan_low      = fan_low     ;
+    this->room3        = room3       ;
+    this->room4        = room4       ;
+    this->room2        = room2       ;
+    this->heat         = heat        ;
+    this->room1        = room1       ;
+    this->unk5         = unk5        ;
+  } 
+
+  void setup() override
+  {
+  // Setup code to configure the pin and attach the interrupt
+  //Send adc_pin to log
+  ESP_LOGD("custom","adc_pin: %d", adc_pin); 
+  //adc_pin = 33;
+  pinMode(adc_pin, INPUT);
+  attachInterrupt(digitalPinToInterrupt(adc_pin), handleInterrupt, FALLING);
     }
 
     void loop() override {
@@ -200,28 +260,29 @@ public:
       
       // Publish the display value as a number
       float display_value = ledProto.get_display_value();
-      displayValue->publish_state(display_value);
-      bitcount->publish_state(ledProto.nbits);
+      setpoint_temp->publish_state(display_value);
+//      bitcount->publish_state(ledProto.nbits);
+      bitcount->publish_state(ledProto.dbg_nerr); //Changed to publish the error count instead of the bit count
 
-      // Publish the status of each LED as a binary sensor
-      cool->publish_state(ledProto.p[clsLedProto::COOL]);
-      run_blink->publish_state(ledProto.p[clsLedProto::RUN_BLINK]);
-      unk1->publish_state(ledProto.p[clsLedProto::UNK1]);
-      run->publish_state(ledProto.p[clsLedProto::RUN]);
-      room->publish_state(ledProto.p[clsLedProto::ROOM]);
-      unk2->publish_state(ledProto.p[clsLedProto::UNK2]);
-      unk3->publish_state(ledProto.p[clsLedProto::UNK3]);
-      unk4->publish_state(ledProto.p[clsLedProto::UNK4]);
-      cool_auto->publish_state(ledProto.p[clsLedProto::COOL_AUTO]);
-      fan_hi->publish_state(ledProto.p[clsLedProto::FAN_HI]);
-      fan_mid->publish_state(ledProto.p[clsLedProto::FAN_MID]);
-      fan_low->publish_state(ledProto.p[clsLedProto::FAN_LOW]);
-      room3->publish_state(ledProto.p[clsLedProto::ROOM3]);
-      room4->publish_state(ledProto.p[clsLedProto::ROOM4]);
-      room2->publish_state(ledProto.p[clsLedProto::ROOM2]);
-      heat->publish_state(ledProto.p[clsLedProto::HEAT]);
-      room1->publish_state(ledProto.p[clsLedProto::ROOM1]);
-      unk5->publish_state(ledProto.p[clsLedProto::UNK5]);
+      // Publish the status of each LED as a binary sensor (convert to boolean with check for 0)
+      cool->publish_state(ledProto.p[clsLedProto::COOL] != 0);
+      auto_md->publish_state(ledProto.p[clsLedProto::AUTO] != 0);
+      unk1->publish_state(ledProto.p[clsLedProto::UNK1] != 0);
+      run->publish_state(ledProto.p[clsLedProto::RUN] != 0);
+      room->publish_state(ledProto.p[clsLedProto::ROOM] != 0);
+      unk2->publish_state(ledProto.p[clsLedProto::UNK2] != 0);
+      unk3->publish_state(ledProto.p[clsLedProto::UNK3] != 0);
+      unk4->publish_state(ledProto.p[clsLedProto::UNK4] != 0);
+      fan_cont->publish_state(ledProto.p[clsLedProto::FAN_CONT] != 0);
+      fan_hi->publish_state(ledProto.p[clsLedProto::FAN_HI] != 0);
+      fan_mid->publish_state(ledProto.p[clsLedProto::FAN_MID] != 0);
+      fan_low->publish_state(ledProto.p[clsLedProto::FAN_LOW] != 0);
+      room3->publish_state(ledProto.p[clsLedProto::ROOM3] != 0);
+      room4->publish_state(ledProto.p[clsLedProto::ROOM4] != 0);
+      room2->publish_state(ledProto.p[clsLedProto::ROOM2] != 0);
+      heat->publish_state(ledProto.p[clsLedProto::HEAT] != 0);
+      room1->publish_state(ledProto.p[clsLedProto::ROOM1] != 0);
+      unk5->publish_state(ledProto.p[clsLedProto::UNK5] != 0);
 
       }
     }
