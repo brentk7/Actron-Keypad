@@ -1,0 +1,265 @@
+#BCK - this version has been adopted to use built in DAC of ESP32 no external DAC required.
+esphome:
+  name: actron-keypad2
+  friendly_name: Actron Keypad2
+
+  includes:
+    - led_proto2.h
+
+esp32:
+  board: m5stack-core-esp32
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG #INFO
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret esphome_api_key
+
+ota:
+  password: !secret esphome_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Aircon-Keypad Fallback Hotspot"
+    password: "M3odvzX6U8gI"
+
+captive_portal:
+
+web_server:
+  port: 80
+
+
+
+#Setup i2c bus to control MCP4725
+#https://esphome.io/components/i2c#i2c
+#i2c:
+#  sda: 25
+#  scl: 21
+#  scan: true
+
+#MCP4725 output to Send Voltages for key presses 
+#https://esphome.io/components/output/mcp4725
+output:
+  - platform: esp32_dac #mcp4725
+    id: dac_output
+    pin: GPIO25
+    #address: 0x62
+
+
+##***TESTING***
+# Define a number input component to output mV to the DAC
+number:
+  - platform: template
+    name: "DAC Output miliVolts"
+    min_value: 0
+    max_value: 3240  # Adjust this value according to the DAC's range
+    step: 1    # Adjust the step size as needed
+    restore_value: true
+    optimistic: true
+    on_value:
+      then:
+        lambda: |-
+          id(dac_output).set_level((x / 3240.0));
+###############################################################
+
+#Voltages adjusted for ESP32 DAC 3.3V output
+button:
+  - platform: template
+    name: "Power"
+    icon: mdi:power
+    on_press:
+      - logger.log: Power Button Pressed
+      - lambda: |-
+          id(dac_output).set_level((3000.0 / 3240.0));
+      - delay: 800ms
+      - lambda: |-
+          id(dac_output).set_level((0.0 / 3240.0));
+
+  - platform: template
+    name: "Fan"
+    icon: mdi:fan
+    on_press:
+      - logger.log: Fan Button Pressed
+      - lambda: |-
+          id(dac_output).set_level((686.0 / 3240.0));
+      - delay: 800ms
+      - lambda: |-
+          id(dac_output).set_level((0.0 / 3240.0));
+
+  - platform: template
+    name: "Temp Up"
+    icon: mdi:thermometer-plus
+    on_press:
+      - logger.log: Temp Up Button Pressed
+      - lambda: |-
+          id(dac_output).set_level((813.0/ 3240.0));
+      - delay: 800ms
+      - lambda: |-
+          id(dac_output).set_level((0.0 / 3240.0));
+
+  - platform: template
+    name: "Temp Down"
+    icon: mdi:thermometer-minus
+    on_press:
+      - logger.log: Temp Down Button Pressed
+      - lambda: |-
+          id(dac_output).set_level((711.0/ 3240.0));
+      - delay: 800ms
+      - lambda: |-
+          id(dac_output).set_level((0.0 / 3240.0));
+
+
+  - platform: template
+    name: "Mode"
+    icon: mdi:air-conditioner
+    on_press:
+      - logger.log: Mode Button Pressed
+      - lambda: |-
+          id(dac_output).set_level((889.0/ 3240.0));
+      - delay: 800ms
+      - lambda: |-
+          id(dac_output).set_level((0.0 / 3240.0));
+
+  - platform: template
+    name: "Timer"
+    icon: mdi:timer
+    on_press:
+      - logger.log: Timer Button Pressed
+      - lambda: |-
+          id(dac_output).set_level((780.0/ 3240.0));
+      - delay: 800ms
+      - lambda: |-
+          id(dac_output).set_level((0.0 / 3240.0));
+
+  - platform: template
+    name: "Timer Up"
+    icon: mdi:timer-plus
+    on_press:
+      - logger.log: Timer Up Button Pressed
+      - lambda: |-
+          id(dac_output).set_level((750.0/ 3240.0));
+      - delay: 800ms
+      - lambda: |-
+          id(dac_output).set_level((0.0 / 3240.0));
+
+  - platform: template
+    name: "Timer Down"
+    icon: mdi:timer-minus
+    on_press:
+      - logger.log: Timer Down Button Pressed
+      - lambda: |-
+          id(dac_output).set_level((725.0/ 3240.0));
+      - delay: 800ms
+      - lambda: |-
+          id(dac_output).set_level((0.0 / 3240.0));
+
+
+#Template sensors will be populated from lambda custom component
+sensor:
+  - platform: template
+    name: "Setpoint Temperature"
+    unit_of_measurement: "°C" 
+    accuracy_decimals: 1     
+    id: setpoint_temp
+    state_class: measurement
+    icon: mdi:thermometer
+  
+  - platform: template
+    name: "Bit Count"
+    id: bit_count
+    state_class: measurement
+    accuracy_decimals: 0
+    
+text_sensor:
+  - platform: template
+    name: "Bit String"
+    id: bit_string
+
+binary_sensor:
+  - platform: template
+    name: "Cool"
+    icon: mdi:snowflake
+    id: cool
+  - platform: template
+    name: "Auto"
+    icon: mdi:flash-auto
+    id: auto_md
+  - platform: template
+    name: "unk1"
+    id: unk1
+  - platform: template
+    name: "Run"
+    icon: mdi:run
+    id: run
+  - platform: template
+    name: "Room"
+    id: room
+  - platform: template
+    name: "unk2"
+    id: unk2
+  - platform: template
+    name: "unk3"
+    id: unk3
+  - platform: template
+    name: "unk4"
+    id: unk4
+  - platform: template
+    name: "Fan Continuos"
+    icon: mdi:fan-chevron-up
+    id: fan_cont
+  - platform: template
+    name: "Fan Hi"
+    icon: mdi:fan-speed-3
+    id: fan_hi
+  - platform: template
+    name: "Fan Mid"
+    icon: mdi:fan-speed-2
+    id: fan_mid
+  - platform: template
+    name: "Fan Low"
+    icon: mdi:fan-speed-1
+    id: fan_low
+  - platform: template
+    name: "Room3"
+    id: room3
+  - platform: template
+    name: "Room4"
+    id: room4
+  - platform: template
+    name: "Room2"
+    id: room2
+  - platform: template
+    name: "Heat"
+    icon: mdi:fire
+    id: heat
+  - platform: template
+    name: "Room1"
+    id: room1
+  - platform: template
+    name: "unk5"
+    id: unk5
+
+#Populate all template sensors from lambda custom component
+#First argument of KeypadStatus is the pin number of the ADC input
+custom_component:
+  - lambda: |-
+      auto keypad_status = new KeypadStatus(33,
+                                            id(bit_string), id(setpoint_temp), id(bit_count),  
+                                            id(cool), id(auto_md), id(unk1), id(run), 
+                                            id(room), id(unk2), id(unk3), id(unk4), 
+                                            id(fan_cont), id(fan_hi), id(fan_mid), id(fan_low), 
+                                            id(room3), id(room4), id(room2), id(heat), 
+                                            id(room1), id(unk5)
+                                            );
+      return {keypad_status};
+    components:
+      id: keypad_status
